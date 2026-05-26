@@ -2,7 +2,7 @@
     "name": "Book Journal",
     "short_name": "Book Journal",
     "description": "My personal reading sanctuary",
-    "start_url": "/book-journal/",
+    "start_url": "/book-journal-app/",
     "display": "standalone",
     "background_color": "#2C1A1D",
     "theme_color": "#2C1A1D",
