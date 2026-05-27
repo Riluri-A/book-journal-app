@@ -3332,6 +3332,10 @@
                 
                 if (!response.ok) {
                     console.log("API error:", data);
+                    if (response.status === 429) {
+                        resultsDiv.innerHTML = `<p class="ai-loading">⏳ The AI is taking a little nap! Wait a moment and try again...</p>`;
+                        return;
+                    }
                     throw new Error(data.error?.status || response.status);
                 }
                 console.log("API response:", data); // ADD THIS
