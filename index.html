@@ -1813,14 +1813,25 @@
         }
 
         .book-card {
+            flex-direction: row;
+            align-items: flex-start;
             width: 100%;
             padding: 15px;
             gap: 12px;
         }
 
         .book-card-cover {
-            width: 160px;
+            display: flex;
+            flex-direction: column;
+            width: 100px;
             align-items: center;
+            flex-shrink: 0
+        }
+
+        .book-card-stars {
+            width: 100%;
+            display: flex;
+            justify-content: center;
         }
 
         .stars-container {
