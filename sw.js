@@ -1,4 +1,4 @@
-const CACHE_NAME = 'book-journal-v1';
+const CACHE_NAME = 'book-journal-v2';
 const urlsToCache = [
     '/book-journal-app/',
     '/book-journal-app/index.html',
