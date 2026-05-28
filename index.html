@@ -783,6 +783,42 @@
             color: white;
         }
 
+        #upload-cover-btn {
+            background: transparent;
+            border: 1px solid var(--surface-light);
+            color: var(--text-secondary);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            transition: all 0.2s ease;
+            align-self: flex-start;
+        }
+
+        #upload-cover-btn:hover {
+            background-color: var(--surface-light);
+            color: var(--text-primary);
+        }
+
+        .settings-btn-secondary {
+            background-color: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--surface-light);
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-style: italic;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .settings-btn-secondary:hover {
+            background-color: var(--surface-light);
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
         /* ---- FORM ACTIONS ---- */
         .form-actions {
             display: felx;
@@ -2239,6 +2275,8 @@
                             <label>Book Cover</label>
                             <div class="cover-search">
                                 <button type="button" onclick="searchBookData()">Search Cover & Synopsis</button>
+                                <button type="button" id="upload-cover-btn" onclick="document.getElementById('cover-file-input').click()">📁 Upload from device</button>
+                                <input type="file" id="cover-file-input" accept="image/*" style="display:none" onchange="handleCoverUpload(event)" />
                                 <div id="cover-preview"></div>
                                 <button type="button" id="remove-cover-btn" style="display:none" onclick="removeCover()">🗑️ Remove Cover</button>
                             </div>
@@ -2358,7 +2396,8 @@
             // ---- FIREBASE IMPORTS ----
             import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
             import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-            import { getFirestore, collection, addDoc, getDocs, query, where, deleteDoc, updateDoc, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";   
+            import { getFirestore, collection, addDoc, getDocs, query, where, deleteDoc, updateDoc, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+            import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";   
                       // deleteDoc - the toold that deletes a document from Firebase
                       // doc - the tool that finds a specific document by its ID
                       // updateDoc - the tool that updates and existing documen in Firebase
@@ -2517,6 +2556,12 @@
                             document.getElementById("user-info").textContent = `Welcome, ${profile.displayName}! 📚`;
                         }
 
+                        if (profile.photoURL) {
+                            document.getElementById("profile-photo-container").innerHTML = 
+                              `<img src="${profile.photoURL}" alt="Profile photo" style="width:100%; height:100%; object-fit:cover; border-radius:50%;" />`;
+                            document.getElementById("remove-photo-btn").style.display = "block";
+                        }
+
                         // Reading goal
                         if (profile.readingGoal) {
                             document.getElementById("settings-reading-goal").value = profile.readingGoal;
@@ -2624,6 +2669,7 @@
             const app = initializeApp(firebaseConfig);
             const auth = getAuth(app);
             const db = getFirestore(app);
+            const storage = getStorage(app);
             const provider = new GoogleAuthProvider();
             // ---- TRACK EDITING STATE ----                                         // EXPANATION 15
             let currentEditId = null;   
@@ -3432,12 +3478,125 @@
          };
 
          // ---- REMOVE COVER ----
-         window.removeCover = () => {
+         window.removeCover = async () => {
             const coverPreview = document.getElementById("cover-preview");
+            const currentUrl = coverPreview.dataset.coverUrl;
+
+            // If it's a Firebase Storage URL, delete the file
+            if (currentUrl && currentUrl.includes("firebasestorage")) {
+                try {
+                    const storageRef = ref(storage, currentUrl);
+                    await deleteObject(storageRef);
+                } catch (error) {
+                    console.log("Error deleting cover file:", error);
+            }
+            }
             coverPreview.innerHTML = `<div id="generic-cover"><span>📖</span><p>No cover yet</p></div>`;
             coverPreview.dataset.coverUrl = "";
             document.getElementById("remove-cover-btn").style.display = "none";
-         }
+         };
+
+         // ---- HANDLE COVER UPLOAD ----
+         window.handleCoverUpload = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // Check file size (max 2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                showAlert("📚 This cover is too heavy for our shelves! Please use an image under 2MB.");
+                return;
+            }
+
+            const user = auth.currentUser;
+            const coverPreview = document.getElementById("cover-preview");
+
+            coverPreview.innerHTML = `<p style="color: var(--text-secondary); font-style: italic; font-size: 12px;">📤 Uploading cover...</p>`;
+
+            try {
+                // Upload to Firebase Storage
+                const storageRef = ref(storage, `users/${user.uid}/covers/${Date.now()}_${file.name}`);
+                await uploadBytes(storageRef, file);
+                const downloadURL = await getDownloadURL(storageRef);
+
+                // Show preview
+                coverPreview.innerHTML = `<img src="${downloadURL}" alt="Book cover" />`;
+                coverPreview.dataset.coverUrl = downloadURL;
+                document.getElementById("remove-cover-btn").style.display = "block";
+                showAlert("📚 Cover uploaded successfully!");
+
+            } catch (error) {
+                console.log("Error uploading cover:", error);
+                showAlert("💀 The cover refused to be uploaded. Please try again!");
+                coverPreview.innerHTML = `<div id="generic-cover"><span>📖</span><p>No cover yet</p></div>`;
+            }
+
+            // Reset file input
+            event.target.value = "";
+         };
+
+         // ---- HANDLE PROFILE PHOTO UPLOAD ----
+         window.handleProfilePhotoUpload = async (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (file.size > 2 * 1024 * 1024) {
+                showAlert("📸 Photo too large! Please use an image under 2MB.");
+                return;
+            }
+
+            const user = auth.currentUser;
+            const container = document.getElementById("profile-photo-container");
+            container.innerHTML = `<p style="color: var(--text-secondary); font-size: 12px;">📤 Uploading...</p>`;
+
+            try {
+                const storageRef = ref(storage, `users/${user.uid}/profile/photo`);
+                await uploadBytes(storageRef, file);
+                const downloadURL = await getDownloadURL(storageRef);
+
+                // Show photo
+                container.innerHTML = `<img src="${downloadURL}" alt="Profile photo" style="width:100%; height:100%; object-fit:cover; border-radius:50%;" />`;
+                document.getElementById("remove-photo-btn").style.display = "block";
+
+                // Save URL to Firestore
+                await setDoc(doc(db, "users", user.uid, "settings", "profile"), {
+                    photoURL: downloadURL
+                }, { merge: true });
+
+                showAlert("📸 Looking good! Profile photo updated!");
+
+            } catch (error) {
+                console.log("Error uploading photo:", error);
+                showAlert("💀 The photo refused to be uploaded. Please try again!");
+                container.innerHTML = `<span id="profile-photo-placeholder">👤</span>`;
+            }
+
+            event.target.value = "";
+         };
+
+         // ---- REMOVE PROFILE PHOTO ----
+         window.removeProfilePhoto = async () => {
+            const confirmed = await showConfirm("🗑️ Remove your profile photo? You'll go back to being a mysterious shadow!");
+            if (!confirmed) return;
+            
+            const user = auth.currentUser;
+
+            try {
+                const storageRef = ref(storage, `users/${user.uid}/profile/photo`);
+                await deleteObject(storageRef);
+
+                await setDoc(doc(db, "users", user.uid, "settings", "profile"), {
+                    photoURL: null
+                }, { merge: true });
+
+                document.getElementById("profile-photo-container").innerHTML = `<span id="profile-photo-placeholder">👤</span>`;
+                document.getElementById("remove-photo-btn").style.display = "none";
+                showAlert("👤 Photo removed. Back to being mysterious!");
+
+            } catch (error) {
+                console.log("Error removing photo:", error);
+                showAlert("💀 The photo refused to leave. It's haunting your profile!");
+            }
+         };
 
          // ---- SAVE BOOKS ----                                                  // EXPLANATION 5-new-version
          window.saveBook = async () => {
@@ -3860,8 +4019,10 @@
                     <div id="profile-photo-container">
                         <span id="profile-photo-placeholder">👤</span>
                     </div>
-                    <div class="profile-photo-buttons" id="photo-buttons-no-photo">
-                        <button class="settings-btn-secondary" disabled title="Coming soon!">📸 Add a face to the name!</button>
+                    <div class="profile-photo-buttons">    <!-- </div>id="photo-buttons-no-photo"> -->
+                        <button class="settings-btn-secondary" onclick="document.getElementById('profile-photo-input').click()">📸 Add a face to the name!</button>
+                        <input type="file" id="profile-photo-input" accept="image/*" style="display:none" onchange="handleProfilePhotoUpload(event)" />
+                        <button class="settings-btn-secondary" id="remove-photo-btn" style="display:none" onclick="removeProfilePhoto()">🗑️ Remove photo</button>
                     </div>
                  </div>
 
